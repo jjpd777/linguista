@@ -1,5 +1,5 @@
 import { useCallback, useState, useRef, useEffect } from 'react';
-import { StyleSheet, TextInput, TouchableOpacity, Dimensions, Platform, Animated, View } from 'react-native';
+import { StyleSheet, TextInput, TouchableOpacity, Dimensions, Platform, Animated, View, ScrollView } from 'react-native';
 import { BlurView } from 'expo-blur';
 
 import { ThemedView } from '@/components/ThemedView';
@@ -7,78 +7,29 @@ import { ThemedText } from '@/components/ThemedText';
 
 const { width, height } = Dimensions.get('window');
 
-type ReadingMode = 'chunk' | 'scroll';
-
 export default function ReadingTestScreen() {
   const [inputText, setInputText] = useState('');
   const [isTestMode, setIsTestMode] = useState(false);
   const [wpm, setWpm] = useState('300'); // Default 300 WPM
-  const [currentChunk, setCurrentChunk] = useState('');
   const [isPlaying, setIsPlaying] = useState(false);
-  const intervalRef = useRef<NodeJS.Timeout>();
-  const wordChunksRef = useRef<string[]>([]);
-  const currentIndexRef = useRef(0);
-  const [readingMode, setReadingMode] = useState<ReadingMode>('chunk');
-  const scrollY = useRef(new Animated.Value(0)).current;
+  const scrollY = useRef(0);
   const animationFrameRef = useRef<number>();
   const startTimeRef = useRef<number>(0);
   const [showIntro, setShowIntro] = useState(false);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollInterval = useRef<NodeJS.Timer>();
+  const contentHeight = useRef(0);
 
-  const prepareWordChunks = useCallback((text: string) => {
-    const words = text.trim().split(/\s+/);
-    const chunks: string[] = [];
-    
-    for (let i = 0; i < words.length; i += 4) {
-      const chunk = words.slice(i, i + 4).join(' ');
-      chunks.push(chunk);
-    }
-    
-    return chunks;
+  const onContentLayout = useCallback((event) => {
+    contentHeight.current = event.nativeEvent.layout.height;
   }, []);
 
-  const startReading = useCallback(() => {
-    if (!inputText.trim() || !wpm.trim()) return;
-
-    const chunks = prepareWordChunks(inputText);
-    wordChunksRef.current = chunks;
-    currentIndexRef.current = 0;
-    
-    // Calculate milliseconds per chunk (4 words)
-    const msPerWord = (60 * 1000) / parseInt(wpm);
-    const msPerChunk = msPerWord * 4;
-
-    setIsTestMode(true);
-    setIsPlaying(true);
-    
-    // Display first chunk immediately
-    setCurrentChunk(chunks[0]);
-
-    // Start interval for subsequent chunks
-    intervalRef.current = setInterval(() => {
-      currentIndexRef.current++;
-      
-      if (currentIndexRef.current >= chunks.length) {
-        stopReading();
-        return;
-      }
-      
-      setCurrentChunk(chunks[currentIndexRef.current]);
-    }, msPerChunk);
-  }, [inputText, wpm, prepareWordChunks]);
-
-  const stopReading = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
+  const stopScrolling = useCallback(() => {
+    if (scrollInterval.current) {
+      clearInterval(scrollInterval.current);
     }
     setIsPlaying(false);
   }, []);
-
-  const resetTest = useCallback(() => {
-    stopReading();
-    setIsTestMode(false);
-    setCurrentChunk('');
-    currentIndexRef.current = 0;
-  }, [stopReading]);
 
   const startScrolling = useCallback(() => {
     if (!inputText.trim() || !wpm.trim()) return;
@@ -87,57 +38,69 @@ export default function ReadingTestScreen() {
     setIsPlaying(true);
     setShowIntro(true);
 
-    // Remove the setTimeout and start scrolling immediately
     const wordsPerMinute = parseInt(wpm);
-    const words = inputText.trim().split(/\s+/);
-    const totalDistance = height * 2;
-    const pixelsPerMs = totalDistance / ((words.length / wordsPerMinute) * 60 * 1000);
+    const wordCount = inputText.trim().split(/\s+/).length;
+    const totalScrollDistance = contentHeight.current;
+    const readingTimeInMinutes = wordCount / wordsPerMinute;
+    const readingTimeInMs = readingTimeInMinutes * 60 * 1000;
     
-    startTimeRef.current = Date.now();
-    scrollY.setValue(0);
+    // Adjust update frequency for Android
+    const updateIntervalMs = Platform.OS === 'android' ? 32 : 16; // 30fps for Android, 60fps for iOS/web
+    
+    // Calculate scroll per interval
+    const totalIntervals = readingTimeInMs / updateIntervalMs;
+    const pixelsPerInterval = totalScrollDistance / totalIntervals;
 
-    const animate = () => {
-      const elapsedMs = Date.now() - startTimeRef.current;
-      const newPosition = elapsedMs * pixelsPerMs;
-      
-      if (newPosition >= totalDistance) {
+    if (scrollInterval.current) {
+      clearInterval(scrollInterval.current);
+    }
+
+    // Reset scroll position
+    scrollY.current = 0;
+    scrollViewRef.current?.scrollTo({
+      y: 0,
+      animated: false
+    });
+
+    let lastTime = Date.now();
+    scrollInterval.current = setInterval(() => {
+      const currentTime = Date.now();
+      const deltaTime = currentTime - lastTime;
+      lastTime = currentTime;
+
+      // Adjust for any frame drops
+      const adjustment = deltaTime / updateIntervalMs;
+      scrollY.current += pixelsPerInterval * adjustment;
+
+      requestAnimationFrame(() => {
+        scrollViewRef.current?.scrollTo({
+          y: scrollY.current,
+          animated: false
+        });
+      });
+
+      if (scrollY.current >= totalScrollDistance) {
         stopScrolling();
-        return;
       }
-      
-      scrollY.setValue(newPosition / totalDistance);
-      animationFrameRef.current = requestAnimationFrame(animate);
-    };
+    }, updateIntervalMs);
 
-    animationFrameRef.current = requestAnimationFrame(animate);
-
-    // Set a timer to hide the intro text after 2 seconds
     setTimeout(() => {
       setShowIntro(false);
-    }, 2000);
-  }, [inputText, wpm, scrollY]);
-
-  const stopScrolling = useCallback(() => {
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-    }
-    setIsPlaying(false);
-  }, []);
+    }, 3000);
+  }, [inputText, wpm, stopScrolling]);
 
   const resetScrolling = useCallback(() => {
     stopScrolling();
     setIsTestMode(false);
-    scrollY.setValue(0);
-  }, [stopScrolling, scrollY]);
+    scrollY.current = 0;
+    scrollViewRef.current?.scrollTo({ y: 0, animated: false });
+  }, [stopScrolling]);
 
-  // Cleanup on unmount
+  // Make sure to clean up the interval
   useEffect(() => {
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
+      if (scrollInterval.current) {
+        clearInterval(scrollInterval.current);
       }
     };
   }, []);
@@ -145,51 +108,39 @@ export default function ReadingTestScreen() {
   const renderReadingMode = () => {
     if (!isTestMode) return null;
 
-    if (readingMode === 'chunk') {
-      return (
-        <ThemedView style={styles.readingContainer}>
-          <View style={styles.textWrapper}>
-            <View style={styles.textContainer}>
-              <ThemedText style={styles.readingText}>
-                {currentChunk.split('\n')[0]}
-              </ThemedText>
-              <ThemedText style={styles.readingText}>
-                {currentChunk.split('\n')[1]}
-              </ThemedText>
-            </View>
-          </View>
-        </ThemedView>
-      );
-    }
-
     return (
       <View style={styles.scrollContainer}>
         {showIntro && (
           <View style={styles.introOverlay}>
             <BlurView intensity={20} style={styles.blurContainer}>
               <ThemedText style={styles.introText}>
-                Speak this paragraph
+                Speak fast & clear
               </ThemedText>
             </BlurView>
           </View>
         )}
-        <Animated.View
-          style={[
-            styles.scrollingTextContainer,
-            {
-              transform: [{
-                translateY: scrollY.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [height * 0.7, -height * 1.8]
-                })
-              }]
-            }
-          ]}
+        <ScrollView
+          ref={scrollViewRef}
+          style={styles.scrollView}
+          scrollEnabled={false}
+          showsVerticalScrollIndicator={false}
+          scrollEventThrottle={16}
+          removeClippedSubviews={true}
+          overScrollMode="never"  // Android specific
+          bounces={false}        // iOS specific
         >
-          <ThemedText style={styles.scrollingText} numberOfLines={0}>
-            {inputText}
-          </ThemedText>
-        </Animated.View>
+          <View 
+            style={styles.scrollingTextContainer}
+            onLayout={onContentLayout}
+          >
+            <ThemedText 
+              style={styles.scrollingText}
+              allowFontScaling={false}  // Prevent font scaling issues
+            >
+              {inputText}
+            </ThemedText>
+          </View>
+        </ScrollView>
         <View style={styles.focusOverlay}>
           <View style={styles.focusLine} />
           <View style={styles.focusLine} />
@@ -227,23 +178,9 @@ export default function ReadingTestScreen() {
               placeholderTextColor="rgba(255, 255, 255, 0.5)"
             />
           </ThemedView>
-          <ThemedView style={styles.modeContainer}>
-            <TouchableOpacity 
-              style={[styles.modeButton, readingMode === 'chunk' && styles.modeButtonActive]}
-              onPress={() => setReadingMode('chunk')}
-            >
-              <ThemedText style={styles.modeButtonText}>Chunk Mode</ThemedText>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.modeButton, readingMode === 'scroll' && styles.modeButtonActive]}
-              onPress={() => setReadingMode('scroll')}
-            >
-              <ThemedText style={styles.modeButtonText}>Scroll Mode</ThemedText>
-            </TouchableOpacity>
-          </ThemedView>
           <TouchableOpacity 
             style={styles.button}
-            onPress={readingMode === 'chunk' ? startReading : startScrolling}
+            onPress={startScrolling}
           >
             <ThemedText style={styles.buttonText}>Begin Reading</ThemedText>
           </TouchableOpacity>
@@ -255,21 +192,21 @@ export default function ReadingTestScreen() {
             {isPlaying ? (
               <TouchableOpacity 
                 style={styles.controlButton} 
-                onPress={readingMode === 'chunk' ? stopReading : stopScrolling}
+                onPress={stopScrolling}
               >
                 <ThemedText style={styles.controlButtonText}>❚❚</ThemedText>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity 
                 style={styles.controlButton} 
-                onPress={readingMode === 'chunk' ? startReading : startScrolling}
+                onPress={startScrolling}
               >
                 <ThemedText style={styles.controlButtonText}>▶</ThemedText>
               </TouchableOpacity>
             )}
             <TouchableOpacity 
               style={[styles.controlButton, styles.resetButton]} 
-              onPress={readingMode === 'chunk' ? resetTest : resetScrolling}
+              onPress={resetScrolling}
             >
               <ThemedText style={styles.controlButtonText}>×</ThemedText>
             </TouchableOpacity>
@@ -406,27 +343,6 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '600',
   },
-  modeContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 20,
-    marginBottom: 30,
-  },
-  modeButton: {
-    padding: 12,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modeButtonActive: {
-    borderColor: '#0a7ea4',
-  },
-  modeButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
   scrollContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -435,19 +351,25 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.3)',
     overflow: 'hidden',
   },
-  scrollingTextContainer: {
-    position: 'absolute',
+  scrollView: {
+    flex: 1,
     width: '100%',
+    backgroundColor: 'transparent',
+  },
+  scrollingTextContainer: {
     padding: 20,
-    paddingTop: Platform.OS === 'android' ? 100 : 20,
+    paddingTop: height / 2,
+    paddingBottom: height / 2,
+    backgroundColor: 'transparent',
   },
   scrollingText: {
-    fontSize: Platform.OS === 'android' ? 32 : 38,
+    fontSize: 32,
     textAlign: 'center',
-    lineHeight: 46,
+    lineHeight: 48,
     fontWeight: '500',
     maxWidth: width * 0.9,
-    flexWrap: 'wrap',
+    includeFontPadding: false,    // Android specific
+    textAlignVertical: 'center',  // Android specific
   },
   focusOverlay: {
     position: 'absolute',
@@ -460,7 +382,7 @@ const styles = StyleSheet.create({
   },
   introOverlay: {
     position: 'absolute',
-    top: '20%',
+    top: height * 0.2,
     left: 0,
     right: 0,
     zIndex: 10,
