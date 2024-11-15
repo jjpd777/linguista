@@ -36,6 +36,12 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "c76ecae9-c0f9-423c-853e-0cae2c8f6260"
+      }
+    },
+    "owner": "juan28"
   }
 }
