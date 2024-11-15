@@ -1,11 +1,13 @@
 import { useCallback, useState, useRef, useEffect } from 'react';
-import { StyleSheet, TextInput, TouchableOpacity, Dimensions, Platform } from 'react-native';
+import { StyleSheet, TextInput, TouchableOpacity, Dimensions, Platform, Animated, View } from 'react-native';
 import { BlurView } from 'expo-blur';
 
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 
 const { width, height } = Dimensions.get('window');
+
+type ReadingMode = 'chunk' | 'scroll';
 
 export default function ReadingTestScreen() {
   const [inputText, setInputText] = useState('');
@@ -16,6 +18,11 @@ export default function ReadingTestScreen() {
   const intervalRef = useRef<NodeJS.Timeout>();
   const wordChunksRef = useRef<string[]>([]);
   const currentIndexRef = useRef(0);
+  const [readingMode, setReadingMode] = useState<ReadingMode>('chunk');
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const animationFrameRef = useRef<number>();
+  const startTimeRef = useRef<number>(0);
+  const [showIntro, setShowIntro] = useState(false);
 
   const prepareWordChunks = useCallback((text: string) => {
     const words = text.trim().split(/\s+/);
@@ -73,14 +80,123 @@ export default function ReadingTestScreen() {
     currentIndexRef.current = 0;
   }, [stopReading]);
 
+  const startScrolling = useCallback(() => {
+    if (!inputText.trim() || !wpm.trim()) return;
+    
+    setIsTestMode(true);
+    setIsPlaying(true);
+    setShowIntro(true);
+
+    // Remove the setTimeout and start scrolling immediately
+    const wordsPerMinute = parseInt(wpm);
+    const words = inputText.trim().split(/\s+/);
+    const totalDistance = height * 2;
+    const pixelsPerMs = totalDistance / ((words.length / wordsPerMinute) * 60 * 1000);
+    
+    startTimeRef.current = Date.now();
+    scrollY.setValue(0);
+
+    const animate = () => {
+      const elapsedMs = Date.now() - startTimeRef.current;
+      const newPosition = elapsedMs * pixelsPerMs;
+      
+      if (newPosition >= totalDistance) {
+        stopScrolling();
+        return;
+      }
+      
+      scrollY.setValue(newPosition / totalDistance);
+      animationFrameRef.current = requestAnimationFrame(animate);
+    };
+
+    animationFrameRef.current = requestAnimationFrame(animate);
+
+    // Set a timer to hide the intro text after 2 seconds
+    setTimeout(() => {
+      setShowIntro(false);
+    }, 2000);
+  }, [inputText, wpm, scrollY]);
+
+  const stopScrolling = useCallback(() => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+    setIsPlaying(false);
+  }, []);
+
+  const resetScrolling = useCallback(() => {
+    stopScrolling();
+    setIsTestMode(false);
+    scrollY.setValue(0);
+  }, [stopScrolling, scrollY]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
       }
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
     };
   }, []);
+
+  const renderReadingMode = () => {
+    if (!isTestMode) return null;
+
+    if (readingMode === 'chunk') {
+      return (
+        <ThemedView style={styles.readingContainer}>
+          <View style={styles.textWrapper}>
+            <View style={styles.textContainer}>
+              <ThemedText style={styles.readingText}>
+                {currentChunk.split('\n')[0]}
+              </ThemedText>
+              <ThemedText style={styles.readingText}>
+                {currentChunk.split('\n')[1]}
+              </ThemedText>
+            </View>
+          </View>
+        </ThemedView>
+      );
+    }
+
+    return (
+      <View style={styles.scrollContainer}>
+        {showIntro && (
+          <View style={styles.introOverlay}>
+            <BlurView intensity={20} style={styles.blurContainer}>
+              <ThemedText style={styles.introText}>
+                Speak this paragraph
+              </ThemedText>
+            </BlurView>
+          </View>
+        )}
+        <Animated.View
+          style={[
+            styles.scrollingTextContainer,
+            {
+              transform: [{
+                translateY: scrollY.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [height * 0.7, -height * 1.8]
+                })
+              }]
+            }
+          ]}
+        >
+          <ThemedText style={styles.scrollingText} numberOfLines={0}>
+            {inputText}
+          </ThemedText>
+        </Animated.View>
+        <View style={styles.focusOverlay}>
+          <View style={styles.focusLine} />
+          <View style={styles.focusLine} />
+        </View>
+      </View>
+    );
+  };
 
   return (
     <ThemedView style={styles.container}>
@@ -111,42 +227,49 @@ export default function ReadingTestScreen() {
               placeholderTextColor="rgba(255, 255, 255, 0.5)"
             />
           </ThemedView>
+          <ThemedView style={styles.modeContainer}>
+            <TouchableOpacity 
+              style={[styles.modeButton, readingMode === 'chunk' && styles.modeButtonActive]}
+              onPress={() => setReadingMode('chunk')}
+            >
+              <ThemedText style={styles.modeButtonText}>Chunk Mode</ThemedText>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.modeButton, readingMode === 'scroll' && styles.modeButtonActive]}
+              onPress={() => setReadingMode('scroll')}
+            >
+              <ThemedText style={styles.modeButtonText}>Scroll Mode</ThemedText>
+            </TouchableOpacity>
+          </ThemedView>
           <TouchableOpacity 
-            style={[
-              styles.button,
-              (!inputText.trim() || !wpm.trim()) && styles.buttonDisabled
-            ]} 
-            onPress={startReading}
-            disabled={!inputText.trim() || !wpm.trim()}
+            style={styles.button}
+            onPress={readingMode === 'chunk' ? startReading : startScrolling}
           >
             <ThemedText style={styles.buttonText}>Begin Reading</ThemedText>
           </TouchableOpacity>
         </>
       ) : (
         <>
-          <ThemedView style={styles.readingContainer}>
-            <ThemedView style={styles.focusLine} />
-            <ThemedText style={styles.readingText}>
-              {currentChunk}
-            </ThemedText>
-            <ThemedView style={styles.focusLine} />
-            <ThemedText style={styles.wpmDisplay}>
-              {wpm} WPM
-            </ThemedText>
-          </ThemedView>
+          {renderReadingMode()}
           <ThemedView style={styles.controlsContainer}>
             {isPlaying ? (
-              <TouchableOpacity style={styles.controlButton} onPress={stopReading}>
+              <TouchableOpacity 
+                style={styles.controlButton} 
+                onPress={readingMode === 'chunk' ? stopReading : stopScrolling}
+              >
                 <ThemedText style={styles.controlButtonText}>❚❚</ThemedText>
               </TouchableOpacity>
             ) : (
-              <TouchableOpacity style={styles.controlButton} onPress={startReading}>
+              <TouchableOpacity 
+                style={styles.controlButton} 
+                onPress={readingMode === 'chunk' ? startReading : startScrolling}
+              >
                 <ThemedText style={styles.controlButtonText}>▶</ThemedText>
               </TouchableOpacity>
             )}
             <TouchableOpacity 
               style={[styles.controlButton, styles.resetButton]} 
-              onPress={resetTest}
+              onPress={readingMode === 'chunk' ? resetTest : resetScrolling}
             >
               <ThemedText style={styles.controlButtonText}>×</ThemedText>
             </TouchableOpacity>
@@ -229,23 +352,24 @@ const styles = StyleSheet.create({
   readingContainer: {
     flex: 1,
     justifyContent: 'center',
-    alignItems: 'center',
-    marginHorizontal: -20,
     backgroundColor: 'rgba(0, 0, 0, 0.3)',
   },
-  focusLine: {
-    width: width * 0.8,
-    height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    marginVertical: 40,
+  textWrapper: {
+    height: 200,  // Fixed height
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  textContainer: {
+    padding: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   readingText: {
-    fontSize: 38,
+    fontSize: Platform.OS === 'android' ? 32 : 38,
     textAlign: 'center',
-    lineHeight: 46,
-    fontWeight: '500',
-    paddingHorizontal: 20,
-    maxWidth: width * 0.9,
+    includeFontPadding: false,
+    padding: 0,
+    margin: 0,
   },
   wpmDisplay: {
     position: 'absolute',
@@ -281,5 +405,81 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 24,
     fontWeight: '600',
+  },
+  modeContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 20,
+    marginBottom: 30,
+  },
+  modeButton: {
+    padding: 12,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modeButtonActive: {
+    borderColor: '#0a7ea4',
+  },
+  modeButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  scrollContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: -20,
+    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+    overflow: 'hidden',
+  },
+  scrollingTextContainer: {
+    position: 'absolute',
+    width: '100%',
+    padding: 20,
+    paddingTop: Platform.OS === 'android' ? 100 : 20,
+  },
+  scrollingText: {
+    fontSize: Platform.OS === 'android' ? 32 : 38,
+    textAlign: 'center',
+    lineHeight: 46,
+    fontWeight: '500',
+    maxWidth: width * 0.9,
+    flexWrap: 'wrap',
+  },
+  focusOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  introOverlay: {
+    position: 'absolute',
+    top: '20%',
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    alignItems: 'center',
+    padding: 20,
+  },
+  blurContainer: {
+    padding: 20,
+    borderRadius: 12,
+    width: '100%',
+  },
+  introText: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    textShadowColor: 'rgba(10, 126, 164, 0.5)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+    paddingVertical: 10,
+    width: '100%',
   },
 });
