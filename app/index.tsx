@@ -1,6 +1,7 @@
 import { useCallback, useState, useRef, useEffect } from 'react';
 import { StyleSheet, TextInput, TouchableOpacity, Dimensions, Platform, Animated, View, ScrollView } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
 
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
@@ -19,6 +20,9 @@ export default function ReadingTestScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
   const scrollInterval = useRef<NodeJS.Timer>();
   const contentHeight = useRef(0);
+  const [facing, setFacing] = useState<CameraType>('back');
+  const [permission, requestPermission] = useCameraPermissions();
+  const [showCamera, setShowCamera] = useState(false);
 
   const onContentLayout = useCallback((event) => {
     contentHeight.current = event.nativeEvent.layout.height;
@@ -149,9 +153,44 @@ export default function ReadingTestScreen() {
     );
   };
 
+  const renderCamera = () => {
+    if (!permission) {
+      return <View />;
+    }
+
+    if (!permission.granted) {
+      return (
+        <View style={styles.container}>
+          <ThemedText style={styles.message}>We need your permission to show the camera</ThemedText>
+          <TouchableOpacity style={styles.button} onPress={requestPermission}>
+            <ThemedText style={styles.buttonText}>grant permission</ThemedText>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    const toggleCameraFacing = () => {
+      setFacing(current => (current === 'back' ? 'front' : 'back'));
+    };
+
+    return (
+      <View style={styles.container}>
+        <CameraView style={styles.camera} facing={facing}>
+          <View style={styles.buttonContainer}>
+            <TouchableOpacity style={styles.flipButton} onPress={toggleCameraFacing}>
+              <ThemedText style={styles.flipButtonText}>Flip Camera</ThemedText>
+            </TouchableOpacity>
+          </View>
+        </CameraView>
+      </View>
+    );
+  };
+
   return (
     <ThemedView style={styles.container}>
-      {!isTestMode ? (
+      {showCamera ? (
+        renderCamera()
+      ) : !isTestMode ? (
         <>
           <ThemedText type="title" style={styles.title}>
             Speed Reading
@@ -159,6 +198,14 @@ export default function ReadingTestScreen() {
           <ThemedText style={styles.subtitle}>
             Train your brain to read faster
           </ThemedText>
+          
+          <TouchableOpacity 
+            style={[styles.button, styles.cameraButton]}
+            onPress={() => setShowCamera(true)}
+          >
+            <ThemedText style={styles.buttonText}>Open Camera</ThemedText>
+          </TouchableOpacity>
+
           <TextInput
             style={[styles.input, { color: '#fff' }]}
             multiline
@@ -404,5 +451,38 @@ const styles = StyleSheet.create({
     textShadowRadius: 4,
     paddingVertical: 10,
     width: '100%',
+  },
+  camera: {
+    flex: 1,
+  },
+  buttonContainer: {
+    position: 'absolute',
+    bottom: 40,
+    alignSelf: 'center',
+  },
+  flipButton: {
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    padding: 15,
+    borderRadius: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  flipButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  message: {
+    textAlign: 'center',
+    paddingBottom: 10,
+  },
+  text: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: 'white',
+  },
+  cameraButton: {
+    marginBottom: 20,
+    backgroundColor: '#2c5282', // Different color to distinguish it
   },
 });
