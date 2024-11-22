@@ -1,7 +1,8 @@
 import { useCallback, useState, useRef, useEffect } from 'react';
 import { StyleSheet, TextInput, TouchableOpacity, Dimensions, Platform, Animated, View, ScrollView } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { CameraView, CameraType, useCameraPermissions } from 'expo-camera';
+import { CameraView, CameraType, useCameraPermissions, Camera } from 'expo-camera';
+import { Audio, Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
 
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
@@ -22,7 +23,13 @@ export default function ReadingTestScreen() {
   const contentHeight = useRef(0);
   const [facing, setFacing] = useState<CameraType>('back');
   const [permission, requestPermission] = useCameraPermissions();
+  const [audioPermission, requestAudioPermission] = Audio.usePermissions();
   const [showCamera, setShowCamera] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const cameraRef = useRef<Camera>(null);
+  const [recordedVideo, setRecordedVideo] = useState<string | null>(null);
+  const [status, setStatus] = useState<AVPlaybackStatus | null>(null);
+  const videoRef = useRef<Video>(null);
 
   const onContentLayout = useCallback((event) => {
     contentHeight.current = event.nativeEvent.layout.height;
@@ -154,16 +161,22 @@ export default function ReadingTestScreen() {
   };
 
   const renderCamera = () => {
-    if (!permission) {
+    if (!permission || !audioPermission) {
       return <View />;
     }
 
-    if (!permission.granted) {
+    if (!permission.granted || !audioPermission.granted) {
       return (
         <View style={styles.container}>
-          <ThemedText style={styles.message}>We need your permission to show the camera</ThemedText>
-          <TouchableOpacity style={styles.button} onPress={requestPermission}>
-            <ThemedText style={styles.buttonText}>grant permission</ThemedText>
+          <ThemedText style={styles.message}>We need camera and audio permissions</ThemedText>
+          <TouchableOpacity 
+            style={styles.button} 
+            onPress={async () => {
+              await requestPermission();
+              await requestAudioPermission();
+            }}
+          >
+            <ThemedText style={styles.buttonText}>Grant permissions</ThemedText>
           </TouchableOpacity>
         </View>
       );
@@ -173,12 +186,117 @@ export default function ReadingTestScreen() {
       setFacing(current => (current === 'back' ? 'front' : 'back'));
     };
 
+    const startRecording = async () => {
+      if (cameraRef.current) {
+        try {
+          setIsRecording(true);
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          const video = await cameraRef.current.recordAsync({
+            maxDuration: 60,
+            maxFileSize: 100 * 1024 * 1024,
+            quality: '1080p',
+            mute: false,
+            videoBitrate: 5000000,
+            fps: 30,
+          });
+          
+          if (video) {
+            setRecordedVideo(video.uri);
+          }
+        } catch (error) {
+          console.error('Recording failed:', error);
+        } finally {
+          setIsRecording(false);
+        }
+      }
+    };
+
+    const stopRecording = async () => {
+      if (cameraRef.current && isRecording) {
+        try {
+          await cameraRef.current.stopRecording();
+        } catch (error) {
+          console.error('Stop recording failed:', error);
+        }
+      }
+    };
+
+    if (recordedVideo) {
+      return (
+        <View style={styles.container}>
+          <Video
+            ref={videoRef}
+            source={{ uri: recordedVideo }}
+            style={styles.video}
+            useNativeControls
+            resizeMode={ResizeMode.CONTAIN}
+            isLooping
+            onPlaybackStatusUpdate={status => setStatus(status)}
+          />
+          <View style={styles.previewButtons}>
+            <TouchableOpacity 
+              style={styles.button} 
+              onPress={() => {
+                if (status?.isPlaying) {
+                  videoRef.current?.pauseAsync();
+                } else {
+                  videoRef.current?.playAsync();
+                }
+              }}
+            >
+              <ThemedText style={styles.buttonText}>
+                {status?.isPlaying ? 'Pause' : 'Play'}
+              </ThemedText>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.button} 
+              onPress={() => setRecordedVideo(null)}
+            >
+              <ThemedText style={styles.buttonText}>Record Again</ThemedText>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.button, styles.exitButton]} 
+              onPress={() => {
+                setRecordedVideo(null);
+                setShowCamera(false);
+              }}
+            >
+              <ThemedText style={styles.buttonText}>Done</ThemedText>
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
+    }
+
     return (
       <View style={styles.container}>
-        <CameraView style={styles.camera} facing={facing}>
+        <CameraView 
+          ref={cameraRef}
+          style={styles.camera} 
+          facing={facing}
+          video={true}
+          mode="video"
+        >
+          <TouchableOpacity 
+            style={styles.exitButton} 
+            onPress={() => setShowCamera(false)}
+          >
+            <ThemedText style={styles.exitButtonText}>×</ThemedText>
+          </TouchableOpacity>
+
           <View style={styles.buttonContainer}>
             <TouchableOpacity style={styles.flipButton} onPress={toggleCameraFacing}>
-              <ThemedText style={styles.flipButtonText}>Flip Camera</ThemedText>
+              <ThemedText style={styles.flipButtonText}>Flip</ThemedText>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.recordButton, isRecording && styles.recordingButton]}
+              onPress={isRecording ? stopRecording : startRecording}
+            >
+              <ThemedText style={styles.flipButtonText}>
+                {isRecording ? 'Stop' : 'Record'}
+              </ThemedText>
             </TouchableOpacity>
           </View>
         </CameraView>
@@ -458,7 +576,10 @@ const styles = StyleSheet.create({
   buttonContainer: {
     position: 'absolute',
     bottom: 40,
-    alignSelf: 'center',
+    flexDirection: 'row',
+    width: '100%',
+    justifyContent: 'center',
+    gap: 20,
   },
   flipButton: {
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
@@ -484,5 +605,45 @@ const styles = StyleSheet.create({
   cameraButton: {
     marginBottom: 20,
     backgroundColor: '#2c5282', // Different color to distinguish it
+  },
+  recordButton: {
+    backgroundColor: 'rgba(255, 0, 0, 0.6)',
+    padding: 15,
+    borderRadius: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recordingButton: {
+    backgroundColor: 'rgba(255, 0, 0, 0.8)',
+  },
+  exitButton: {
+    position: 'absolute',
+    top: 40,
+    right: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  exitButtonText: {
+    color: 'white',
+    fontSize: 24,
+    fontWeight: 'bold',
+  },
+  video: {
+    flex: 1,
+    width: '100%',
+  },
+  previewButtons: {
+    position: 'absolute',
+    bottom: 40,
+    flexDirection: 'row',
+    width: '100%',
+    justifyContent: 'center',
+    gap: 20,
+    paddingHorizontal: 20,
   },
 });
