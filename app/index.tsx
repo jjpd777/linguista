@@ -48,6 +48,7 @@ export default function ReadingTestScreen() {
     setIsTestMode(true);
     setIsPlaying(true);
     setShowIntro(true);
+    setShowCamera(true);
 
     const wordsPerMinute = parseInt(wpm);
     const wordCount = inputText.trim().split(/\s+/).length;
@@ -306,9 +307,7 @@ export default function ReadingTestScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      {showCamera ? (
-        renderCamera()
-      ) : !isTestMode ? (
+      {!isTestMode ? (
         <>
           <ThemedText type="title" style={styles.title}>
             Speed Reading
@@ -317,13 +316,6 @@ export default function ReadingTestScreen() {
             Train your brain to read faster
           </ThemedText>
           
-          <TouchableOpacity 
-            style={[styles.button, styles.cameraButton]}
-            onPress={() => setShowCamera(true)}
-          >
-            <ThemedText style={styles.buttonText}>Open Camera</ThemedText>
-          </TouchableOpacity>
-
           <TextInput
             style={[styles.input, { color: '#fff' }]}
             multiline
@@ -353,6 +345,7 @@ export default function ReadingTestScreen() {
       ) : (
         <>
           {renderReadingMode()}
+          {renderCamera()}
           <ThemedView style={styles.controlsContainer}>
             {isPlaying ? (
               <TouchableOpacity 
@@ -571,7 +564,14 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   camera: {
-    flex: 1,
+    position: 'absolute',
+    top: 20,
+    right: 20,
+    width: 150,
+    height: 200,
+    zIndex: 2,
+    borderRadius: 12,
+    overflow: 'hidden',
   },
   buttonContainer: {
     position: 'absolute',
