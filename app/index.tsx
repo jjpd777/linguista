@@ -138,8 +138,8 @@ export default function ReadingTestScreen() {
           showsVerticalScrollIndicator={false}
           scrollEventThrottle={16}
           removeClippedSubviews={true}
-          overScrollMode="never"  // Android specific
-          bounces={false}        // iOS specific
+          overScrollMode="never"
+          bounces={false}
         >
           <View 
             style={styles.scrollingTextContainer}
@@ -147,7 +147,7 @@ export default function ReadingTestScreen() {
           >
             <ThemedText 
               style={styles.scrollingText}
-              allowFontScaling={false}  // Prevent font scaling issues
+              allowFontScaling={false}
             >
               {inputText}
             </ThemedText>
@@ -156,6 +156,29 @@ export default function ReadingTestScreen() {
         <View style={styles.focusOverlay}>
           <View style={styles.focusLine} />
           <View style={styles.focusLine} />
+          <ThemedView style={styles.controlsContainer}>
+            {isPlaying ? (
+              <TouchableOpacity 
+                style={styles.controlButton} 
+                onPress={stopScrolling}
+              >
+                <ThemedText style={styles.controlButtonText}>❚❚</ThemedText>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity 
+                style={styles.controlButton} 
+                onPress={startScrolling}
+              >
+                <ThemedText style={styles.controlButtonText}>▶</ThemedText>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity 
+              style={[styles.controlButton, styles.resetButton]} 
+              onPress={resetScrolling}
+            >
+              <ThemedText style={styles.controlButtonText}>×</ThemedText>
+            </TouchableOpacity>
+          </ThemedView>
         </View>
       </View>
     );
@@ -346,29 +369,6 @@ export default function ReadingTestScreen() {
         <>
           {renderReadingMode()}
           {renderCamera()}
-          <ThemedView style={styles.controlsContainer}>
-            {isPlaying ? (
-              <TouchableOpacity 
-                style={styles.controlButton} 
-                onPress={stopScrolling}
-              >
-                <ThemedText style={styles.controlButtonText}>❚❚</ThemedText>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity 
-                style={styles.controlButton} 
-                onPress={startScrolling}
-              >
-                <ThemedText style={styles.controlButtonText}>▶</ThemedText>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity 
-              style={[styles.controlButton, styles.resetButton]} 
-              onPress={resetScrolling}
-            >
-              <ThemedText style={styles.controlButtonText}>×</ThemedText>
-            </TouchableOpacity>
-          </ThemedView>
         </>
       )}
     </ThemedView>
@@ -477,8 +477,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     flexDirection: 'row',
     gap: 10,
-    right: 10,
-    bottom: Platform.OS === 'ios' ? 40 : 20,
+    bottom: 20,
     zIndex: 10,
   },
   controlButton: {
