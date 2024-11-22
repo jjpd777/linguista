@@ -565,13 +565,12 @@ const styles = StyleSheet.create({
   },
   camera: {
     position: 'absolute',
-    top: 20,
-    right: 20,
-    width: 150,
-    height: 200,
+    top: 0,
+    left: 0,
+    right: 0,
+    width: '100%',
+    height: '100%',
     zIndex: 2,
-    borderRadius: 12,
-    overflow: 'hidden',
   },
   buttonContainer: {
     position: 'absolute',
