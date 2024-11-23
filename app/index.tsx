@@ -138,8 +138,8 @@ export default function ReadingTestScreen() {
           showsVerticalScrollIndicator={false}
           scrollEventThrottle={16}
           removeClippedSubviews={true}
-          overScrollMode="never"
-          bounces={false}
+          overScrollMode="never"  // Android specific
+          bounces={false}        // iOS specific
         >
           <View 
             style={styles.scrollingTextContainer}
@@ -147,7 +147,7 @@ export default function ReadingTestScreen() {
           >
             <ThemedText 
               style={styles.scrollingText}
-              allowFontScaling={false}
+              allowFontScaling={false}  // Prevent font scaling issues
             >
               {inputText}
             </ThemedText>
@@ -156,29 +156,6 @@ export default function ReadingTestScreen() {
         <View style={styles.focusOverlay}>
           <View style={styles.focusLine} />
           <View style={styles.focusLine} />
-          <ThemedView style={styles.controlsContainer}>
-            {isPlaying ? (
-              <TouchableOpacity 
-                style={styles.controlButton} 
-                onPress={stopScrolling}
-              >
-                <ThemedText style={styles.controlButtonText}>❚❚</ThemedText>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity 
-                style={styles.controlButton} 
-                onPress={startScrolling}
-              >
-                <ThemedText style={styles.controlButtonText}>▶</ThemedText>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity 
-              style={[styles.controlButton, styles.resetButton]} 
-              onPress={resetScrolling}
-            >
-              <ThemedText style={styles.controlButtonText}>×</ThemedText>
-            </TouchableOpacity>
-          </ThemedView>
         </View>
       </View>
     );
@@ -258,37 +235,6 @@ export default function ReadingTestScreen() {
             isLooping
             onPlaybackStatusUpdate={status => setStatus(status)}
           />
-          <View style={styles.previewButtons}>
-            <TouchableOpacity 
-              style={styles.button} 
-              onPress={() => {
-                if (status?.isPlaying) {
-                  videoRef.current?.pauseAsync();
-                } else {
-                  videoRef.current?.playAsync();
-                }
-              }}
-            >
-              <ThemedText style={styles.buttonText}>
-                {status?.isPlaying ? 'Pause' : 'Play'}
-              </ThemedText>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.button} 
-              onPress={() => setRecordedVideo(null)}
-            >
-              <ThemedText style={styles.buttonText}>Record Again</ThemedText>
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={[styles.button, styles.exitButton]} 
-              onPress={() => {
-                setRecordedVideo(null);
-                setShowCamera(false);
-              }}
-            >
-              <ThemedText style={styles.buttonText}>Done</ThemedText>
-            </TouchableOpacity>
-          </View>
         </View>
       );
     }
@@ -303,25 +249,31 @@ export default function ReadingTestScreen() {
           mode="video"
         >
           <TouchableOpacity 
-            style={styles.exitButton} 
-            onPress={() => setShowCamera(false)}
+            style={styles.flipButton}
+            onPress={() => setFacing(current => (current === 'back' ? 'front' : 'back'))}
           >
-            <ThemedText style={styles.exitButtonText}>×</ThemedText>
+            <ThemedText style={styles.flipButtonText}>Flip</ThemedText>
           </TouchableOpacity>
-
           <View style={styles.buttonContainer}>
-            <TouchableOpacity style={styles.flipButton} onPress={toggleCameraFacing}>
-              <ThemedText style={styles.flipButtonText}>Flip</ThemedText>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.recordButton, isRecording && styles.recordingButton]}
-              onPress={isRecording ? stopRecording : startRecording}
-            >
-              <ThemedText style={styles.flipButtonText}>
-                {isRecording ? 'Stop' : 'Record'}
-              </ThemedText>
-            </TouchableOpacity>
+            {!isRecording ? (
+              <TouchableOpacity 
+                style={styles.recordButton}
+                onPress={startRecording}
+              >
+                <ThemedText style={styles.recordButtonText}>
+                  Start Recording
+                </ThemedText>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity 
+                style={[styles.recordButton, styles.recordingButton]}
+                onPress={stopRecording}
+              >
+                <ThemedText style={styles.recordButtonText}>
+                  Stop Recording
+                </ThemedText>
+              </TouchableOpacity>
+            )}
           </View>
         </CameraView>
       </View>
@@ -367,8 +319,60 @@ export default function ReadingTestScreen() {
         </>
       ) : (
         <>
-          {renderReadingMode()}
-          {renderCamera()}
+          <View style={styles.readingSection}>
+            {renderReadingMode()}
+          </View>
+
+          <View style={styles.controlBar}>
+            {recordedVideo ? (
+              <View style={styles.controlGroup}>
+                <TouchableOpacity 
+                  style={styles.button} 
+                  onPress={() => setRecordedVideo(null)}
+                >
+                  <ThemedText style={styles.buttonText}>Record Again</ThemedText>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.button, styles.saveButton]} 
+                  onPress={() => {
+                    // Handle save functionality
+                    setRecordedVideo(null);
+                    setShowCamera(false);
+                  }}
+                >
+                  <ThemedText style={styles.buttonText}>Save Video</ThemedText>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.controlGroup}>
+                {isPlaying ? (
+                  <TouchableOpacity 
+                    style={styles.controlButton} 
+                    onPress={stopScrolling}
+                  >
+                    <ThemedText style={styles.controlButtonText}>❚❚</ThemedText>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity 
+                    style={styles.controlButton} 
+                    onPress={startScrolling}
+                  >
+                    <ThemedText style={styles.controlButtonText}>▶</ThemedText>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity 
+                  style={[styles.controlButton, styles.resetButton]} 
+                  onPress={resetScrolling}
+                >
+                  <ThemedText style={styles.controlButtonText}>×</ThemedText>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.cameraSection}>
+            {renderCamera()}
+          </View>
         </>
       )}
     </ThemedView>
@@ -435,6 +439,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 3,
+    minWidth: 140,
   },
   buttonDisabled: {
     opacity: 0.5,
@@ -473,11 +478,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     opacity: 0.5,
   },
-  controlsContainer: {
+  videoControlsContainer: {
     position: 'absolute',
     flexDirection: 'row',
     gap: 10,
-    bottom: 20,
+    right: 10,
+    top: Platform.OS === 'ios' ? 60 : 40,
+    zIndex: 10,
+  },
+  scrollControlsContainer: {
+    position: 'absolute',
+    flexDirection: 'row',
+    gap: 10,
+    right: 10,
+    bottom: 40,
     zIndex: 10,
   },
   controlButton: {
@@ -580,11 +594,13 @@ const styles = StyleSheet.create({
     gap: 20,
   },
   flipButton: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 60 : 40,
+    right: 20,
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    padding: 15,
+    padding: 12,
     borderRadius: 25,
-    alignItems: 'center',
-    justifyContent: 'center',
+    zIndex: 10,
   },
   flipButtonText: {
     color: 'white',
@@ -606,30 +622,22 @@ const styles = StyleSheet.create({
   },
   recordButton: {
     backgroundColor: 'rgba(255, 0, 0, 0.6)',
-    padding: 15,
+    padding: 20,
     borderRadius: 25,
     alignItems: 'center',
     justifyContent: 'center',
+    minWidth: 160,
   },
   recordingButton: {
     backgroundColor: 'rgba(255, 0, 0, 0.8)',
   },
-  exitButton: {
-    position: 'absolute',
-    top: 40,
-    right: 20,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 10,
-  },
-  exitButtonText: {
+  recordButtonText: {
     color: 'white',
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  saveButton: {
+    backgroundColor: '#28a745', // Green color for save button
   },
   video: {
     flex: 1,
@@ -637,11 +645,63 @@ const styles = StyleSheet.create({
   },
   previewButtons: {
     position: 'absolute',
-    bottom: 40,
+    bottom: 40, 
     flexDirection: 'row',
     width: '100%',
     justifyContent: 'center',
     gap: 20,
     paddingHorizontal: 20,
+  },
+  readingSection: {
+    flex: 1,
+    width: '100%',
+  },
+  
+  cameraSection: {
+    flex: 1,
+    width: '100%',
+  },
+
+  controlBar: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+
+  controlGroup: {
+    flexDirection: 'row',
+    gap: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  controlButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(10, 126, 164, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+
+  resetButton: {
+    backgroundColor: 'rgba(220, 53, 69, 0.8)',
+  },
+
+  controlButtonText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: '600',
   },
 });
