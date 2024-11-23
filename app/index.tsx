@@ -3,52 +3,203 @@ import { StyleSheet, TextInput, TouchableOpacity, Dimensions, Platform, Animated
 import { BlurView } from 'expo-blur';
 import { CameraView, CameraType, useCameraPermissions, Camera } from 'expo-camera';
 import { Audio, Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
+import * as MediaLibrary from 'expo-media-library';
+import { Alert } from 'react-native';
 
 import { ThemedView } from '@/components/ThemedView';
 import { ThemedText } from '@/components/ThemedText';
 
 const { width, height } = Dimensions.get('window');
 
-export default function ReadingTestScreen() {
-  const [inputText, setInputText] = useState('');
-  const [isTestMode, setIsTestMode] = useState(false);
-  const [wpm, setWpm] = useState('300'); // Default 300 WPM
-  const [isPlaying, setIsPlaying] = useState(false);
-  const scrollY = useRef(0);
-  const animationFrameRef = useRef<number>();
-  const startTimeRef = useRef<number>(0);
-  const [showIntro, setShowIntro] = useState(false);
-  const scrollViewRef = useRef<ScrollView>(null);
-  const scrollInterval = useRef<NodeJS.Timer>();
-  const contentHeight = useRef(0);
+// New component for the camera functionality
+function ReadingCamera({ 
+  permission, 
+  audioPermission, 
+  requestPermission, 
+  requestAudioPermission 
+}) {
   const [facing, setFacing] = useState<CameraType>('back');
-  const [permission, requestPermission] = useCameraPermissions();
-  const [audioPermission, requestAudioPermission] = Audio.usePermissions();
-  const [showCamera, setShowCamera] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const cameraRef = useRef<Camera>(null);
   const [recordedVideo, setRecordedVideo] = useState<string | null>(null);
   const [status, setStatus] = useState<AVPlaybackStatus | null>(null);
   const videoRef = useRef<Video>(null);
 
-  const onContentLayout = useCallback((event) => {
-    contentHeight.current = event.nativeEvent.layout.height;
+  const toggleCameraFacing = () => {
+    setFacing(current => (current === 'back' ? 'front' : 'back'));
+  };
+
+  const startRecording = async () => {
+    if (cameraRef.current) {
+      try {
+        setIsRecording(true);
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        const video = await cameraRef.current.recordAsync({
+          maxDuration: 60,
+          maxFileSize: 100 * 1024 * 1024,
+          quality: '1080p',
+          mute: false,
+          videoBitrate: 5000000,
+          fps: 30,
+        });
+        
+        if (video) {
+          setRecordedVideo(video.uri);
+        }
+      } catch (error) {
+        console.error('Recording failed:', error);
+      } finally {
+        setIsRecording(false);
+      }
+    }
+  };
+
+  const stopRecording = async () => {
+    if (cameraRef.current && isRecording) {
+      try {
+        await cameraRef.current.stopRecording();
+      } catch (error) {
+        console.error('Stop recording failed:', error);
+      }
+    }
+  };
+
+  if (recordedVideo) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.previewButtons}>
+          <TouchableOpacity 
+            style={[styles.button, styles.retakeButton]}
+            onPress={() => setRecordedVideo(null)}
+          >
+            <ThemedText style={styles.buttonText}>Record Again</ThemedText>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.button, styles.saveButton]}
+            onPress={async () => {
+              try {
+                const asset = await MediaLibrary.createAssetAsync(recordedVideo);
+                await MediaLibrary.createAlbumAsync('Reading Tests', asset, false);
+                Alert.alert('Success', 'Video saved to gallery!');
+              } catch (error) {
+                Alert.alert('Error', 'Failed to save video');
+                console.error('Save error:', error);
+              }
+            }}
+          >
+            <ThemedText style={styles.buttonText}>Save Video</ThemedText>
+          </TouchableOpacity>
+        </View>
+        <Video
+          ref={videoRef}
+          source={{ uri: recordedVideo }}
+          style={styles.video}
+          useNativeControls
+          resizeMode={ResizeMode.CONTAIN}
+          isLooping
+          onPlaybackStatusUpdate={status => setStatus(status)}
+        />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.cameraContainer}>
+      <CameraView 
+        ref={cameraRef}
+        style={styles.camera} 
+        facing={facing}
+        video={true}
+        mode="video"
+      >
+        <TouchableOpacity 
+          style={styles.flipButton}
+          onPress={() => setFacing(current => (current === 'back' ? 'front' : 'back'))}
+        >
+          <ThemedText style={styles.flipButtonText}>Flip</ThemedText>
+        </TouchableOpacity>
+      </CameraView>
+      <View style={styles.recordButtonContainer}>
+        {!isRecording ? (
+          <TouchableOpacity 
+            style={styles.recordButton}
+            onPress={startRecording}
+          >
+            <ThemedText style={styles.recordButtonText}>
+              Start Recording
+            </ThemedText>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity 
+            style={[styles.recordButton, styles.recordingButton]}
+            onPress={stopRecording}
+          >
+            <ThemedText style={styles.recordButtonText}>
+              Stop Recording
+            </ThemedText>
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
+}
+
+// New component for the scrolling text functionality
+function ScrollingText({ 
+  inputText, 
+  wpm, 
+  isPlaying, 
+  showIntro,
+  onContentLayout,
+  onScrollComplete,
+  onPlay,
+  onPause,
+  onReset 
+}: {
+  inputText: string;
+  wpm: string;
+  isPlaying: boolean;
+  showIntro: boolean;
+  onContentLayout: (event: any) => void;
+  onScrollComplete: () => void;
+  onPlay: () => void;
+  onPause: () => void;
+  onReset: () => void;
+}) {
+  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollY = useRef(0);
+  const scrollInterval = useRef<NodeJS.Timer>();
+  const contentHeight = useRef(0);
+
+  // Clean up interval on unmount
+  useEffect(() => {
+    return () => {
+      if (scrollInterval.current) {
+        clearInterval(scrollInterval.current);
+      }
+    };
   }, []);
+
+  // Handle scrolling when isPlaying changes
+  useEffect(() => {
+    if (isPlaying) {
+      startScrolling();
+    } else {
+      stopScrolling();
+    }
+  }, [isPlaying]);
 
   const stopScrolling = useCallback(() => {
     if (scrollInterval.current) {
       clearInterval(scrollInterval.current);
+      scrollInterval.current = undefined;
     }
-    setIsPlaying(false);
-  }, []);
+    onScrollComplete();
+  }, [onScrollComplete]);
 
   const startScrolling = useCallback(() => {
     if (!inputText.trim() || !wpm.trim()) return;
-    
-    setIsTestMode(true);
-    setIsPlaying(true);
-    setShowIntro(true);
-    setShowCamera(true);
 
     const wordsPerMinute = parseInt(wpm);
     const wordCount = inputText.trim().split(/\s+/).length;
@@ -95,283 +246,169 @@ export default function ReadingTestScreen() {
         stopScrolling();
       }
     }, updateIntervalMs);
-
-    setTimeout(() => {
-      setShowIntro(false);
-    }, 3000);
   }, [inputText, wpm, stopScrolling]);
+
+  // Update contentHeight when layout changes
+  const handleContentLayout = (event: any) => {
+    contentHeight.current = event.nativeEvent.layout.height;
+    onContentLayout(event);
+  };
+
+  return (
+    <View style={styles.scrollContainer}>
+      {showIntro && (
+        <View style={styles.introOverlay}>
+          <BlurView intensity={20} style={styles.blurContainer}>
+            <ThemedText style={styles.introText}>
+              Speak fast & clear
+            </ThemedText>
+          </BlurView>
+        </View>
+      )}
+      <ScrollView
+        ref={scrollViewRef}
+        style={styles.scrollView}
+        scrollEnabled={false}
+        showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        removeClippedSubviews={true}
+        overScrollMode="never"
+        bounces={false}
+      >
+        <View 
+          style={styles.scrollingTextContainer}
+          onLayout={handleContentLayout}
+        >
+          <ThemedText 
+            style={styles.scrollingText}
+            allowFontScaling={false}
+          >
+            {inputText}
+          </ThemedText>
+        </View>
+      </ScrollView>
+
+      <View style={styles.scrollControlsContainer}>
+        {isPlaying ? (
+          <TouchableOpacity 
+            style={styles.controlButton}
+            onPress={onPause}
+          >
+            <ThemedText style={styles.controlButtonText}>⏸</ThemedText>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity 
+            style={styles.controlButton}
+            onPress={onPlay}
+          >
+            <ThemedText style={styles.controlButtonText}>▶️</ThemedText>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity 
+          style={[styles.controlButton, styles.resetButton]}
+          onPress={onReset}
+        >
+          <ThemedText style={styles.controlButtonText}>↺</ThemedText>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+export default function ReadingTestScreen() {
+  const [inputText, setInputText] = useState('');
+  const [isTestMode, setIsTestMode] = useState(false);
+  const [wpm, setWpm] = useState('300');
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [showIntro, setShowIntro] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
+  const contentHeight = useRef(0);
+  const [permission, requestPermission] = useCameraPermissions();
+  const [audioPermission, requestAudioPermission] = Audio.usePermissions();
+
+  const startScrolling = useCallback(() => {
+    if (!isTestMode) {
+      setIsTestMode(true);
+      setShowIntro(true);
+      setShowCamera(true);
+    }
+    setIsPlaying(true);
+  }, [isTestMode]);
+
+  const stopScrolling = useCallback(() => {
+    setIsPlaying(false);
+  }, []);
 
   const resetScrolling = useCallback(() => {
     stopScrolling();
     setIsTestMode(false);
-    scrollY.current = 0;
-    scrollViewRef.current?.scrollTo({ y: 0, animated: false });
   }, [stopScrolling]);
-
-  // Make sure to clean up the interval
-  useEffect(() => {
-    return () => {
-      if (scrollInterval.current) {
-        clearInterval(scrollInterval.current);
-      }
-    };
-  }, []);
-
-  const renderReadingMode = () => {
-    if (!isTestMode) return null;
-
-    return (
-      <View style={styles.scrollContainer}>
-        {showIntro && (
-          <View style={styles.introOverlay}>
-            <BlurView intensity={20} style={styles.blurContainer}>
-              <ThemedText style={styles.introText}>
-                Speak fast & clear
-              </ThemedText>
-            </BlurView>
-          </View>
-        )}
-        <ScrollView
-          ref={scrollViewRef}
-          style={styles.scrollView}
-          scrollEnabled={false}
-          showsVerticalScrollIndicator={false}
-          scrollEventThrottle={16}
-          removeClippedSubviews={true}
-          overScrollMode="never"  // Android specific
-          bounces={false}        // iOS specific
-        >
-          <View 
-            style={styles.scrollingTextContainer}
-            onLayout={onContentLayout}
-          >
-            <ThemedText 
-              style={styles.scrollingText}
-              allowFontScaling={false}  // Prevent font scaling issues
-            >
-              {inputText}
-            </ThemedText>
-          </View>
-        </ScrollView>
-        <View style={styles.focusOverlay}>
-          <View style={styles.focusLine} />
-          <View style={styles.focusLine} />
-        </View>
-      </View>
-    );
-  };
-
-  const renderCamera = () => {
-    if (!permission || !audioPermission) {
-      return <View />;
-    }
-
-    if (!permission.granted || !audioPermission.granted) {
-      return (
-        <View style={styles.container}>
-          <ThemedText style={styles.message}>We need camera and audio permissions</ThemedText>
-          <TouchableOpacity 
-            style={styles.button} 
-            onPress={async () => {
-              await requestPermission();
-              await requestAudioPermission();
-            }}
-          >
-            <ThemedText style={styles.buttonText}>Grant permissions</ThemedText>
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
-    const toggleCameraFacing = () => {
-      setFacing(current => (current === 'back' ? 'front' : 'back'));
-    };
-
-    const startRecording = async () => {
-      if (cameraRef.current) {
-        try {
-          setIsRecording(true);
-          await new Promise(resolve => setTimeout(resolve, 100));
-          
-          const video = await cameraRef.current.recordAsync({
-            maxDuration: 60,
-            maxFileSize: 100 * 1024 * 1024,
-            quality: '1080p',
-            mute: false,
-            videoBitrate: 5000000,
-            fps: 30,
-          });
-          
-          if (video) {
-            setRecordedVideo(video.uri);
-          }
-        } catch (error) {
-          console.error('Recording failed:', error);
-        } finally {
-          setIsRecording(false);
-        }
-      }
-    };
-
-    const stopRecording = async () => {
-      if (cameraRef.current && isRecording) {
-        try {
-          await cameraRef.current.stopRecording();
-        } catch (error) {
-          console.error('Stop recording failed:', error);
-        }
-      }
-    };
-
-    if (recordedVideo) {
-      return (
-        <View style={styles.container}>
-          <Video
-            ref={videoRef}
-            source={{ uri: recordedVideo }}
-            style={styles.video}
-            useNativeControls
-            resizeMode={ResizeMode.CONTAIN}
-            isLooping
-            onPlaybackStatusUpdate={status => setStatus(status)}
-          />
-        </View>
-      );
-    }
-
-    return (
-      <View style={styles.cameraContainer}>
-        <CameraView 
-          ref={cameraRef}
-          style={styles.camera} 
-          facing={facing}
-          video={true}
-          mode="video"
-        >
-          <TouchableOpacity 
-            style={styles.flipButton}
-            onPress={() => setFacing(current => (current === 'back' ? 'front' : 'back'))}
-          >
-            <ThemedText style={styles.flipButtonText}>Flip</ThemedText>
-          </TouchableOpacity>
-        </CameraView>
-        <View style={styles.recordButtonContainer}>
-          {!isRecording ? (
-            <TouchableOpacity 
-              style={styles.recordButton}
-              onPress={startRecording}
-            >
-              <ThemedText style={styles.recordButtonText}>
-                Start Recording
-              </ThemedText>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity 
-              style={[styles.recordButton, styles.recordingButton]}
-              onPress={stopRecording}
-            >
-              <ThemedText style={styles.recordButtonText}>
-                Stop Recording
-              </ThemedText>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-    );
-  };
 
   return (
     <ThemedView style={styles.container}>
       {!isTestMode ? (
         <>
-          <ThemedText type="title" style={styles.title}>
-            Speed Reading
-          </ThemedText>
+          <ThemedText style={styles.title}>Reading Test</ThemedText>
           <ThemedText style={styles.subtitle}>
-            Train your brain to read faster
+            Enter your text and set your reading speed
           </ThemedText>
           
           <TextInput
-            style={[styles.input, { color: '#fff' }]}
+            style={styles.input}
             multiline
-            placeholder="Paste your text here..."
+            placeholder="Enter your text here..."
+            placeholderTextColor="rgba(255, 255, 255, 0.5)"
             value={inputText}
             onChangeText={setInputText}
-            placeholderTextColor="rgba(255, 255, 255, 0.5)"
           />
-          <ThemedView style={styles.wpmContainer}>
-            <ThemedText style={styles.wpmLabel}>Reading Speed (WPM):</ThemedText>
+          
+          <View style={styles.wpmContainer}>
+            <ThemedText style={styles.wpmLabel}>Words per minute:</ThemedText>
             <TextInput
-              style={[styles.wpmInput, { color: '#fff' }]}
+              style={styles.wpmInput}
               keyboardType="numeric"
               value={wpm}
               onChangeText={setWpm}
               maxLength={4}
-              placeholderTextColor="rgba(255, 255, 255, 0.5)"
             />
-          </ThemedView>
-          <TouchableOpacity 
-            style={styles.button}
+          </View>
+
+          <TouchableOpacity
+            style={[
+              styles.button,
+              (!inputText.trim() || !wpm.trim()) && styles.buttonDisabled
+            ]}
             onPress={startScrolling}
+            disabled={!inputText.trim() || !wpm.trim()}
           >
-            <ThemedText style={styles.buttonText}>Begin Reading</ThemedText>
+            <ThemedText style={styles.buttonText}>Start Test</ThemedText>
           </TouchableOpacity>
         </>
       ) : (
         <>
           <View style={styles.readingSection}>
-            {renderReadingMode()}
-          </View>
-
-          <View style={styles.controlBar}>
-            {recordedVideo ? (
-              <View style={styles.controlGroup}>
-                <TouchableOpacity 
-                  style={styles.button} 
-                  onPress={() => setRecordedVideo(null)}
-                >
-                  <ThemedText style={styles.buttonText}>Record Again</ThemedText>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={[styles.button, styles.saveButton]} 
-                  onPress={() => {
-                    // Handle save functionality
-                    setRecordedVideo(null);
-                    setShowCamera(false);
-                  }}
-                >
-                  <ThemedText style={styles.buttonText}>Save Video</ThemedText>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={styles.controlGroup}>
-                {isPlaying ? (
-                  <TouchableOpacity 
-                    style={styles.controlButton} 
-                    onPress={stopScrolling}
-                  >
-                    <ThemedText style={styles.controlButtonText}>❚❚</ThemedText>
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity 
-                    style={styles.controlButton} 
-                    onPress={startScrolling}
-                  >
-                    <ThemedText style={styles.controlButtonText}>▶</ThemedText>
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity 
-                  style={[styles.controlButton, styles.resetButton]} 
-                  onPress={resetScrolling}
-                >
-                  <ThemedText style={styles.controlButtonText}>×</ThemedText>
-                </TouchableOpacity>
-              </View>
-            )}
+            <ScrollingText
+              inputText={inputText}
+              wpm={wpm}
+              isPlaying={isPlaying}
+              showIntro={showIntro}
+              onContentLayout={(event) => {
+                contentHeight.current = event.nativeEvent.layout.height;
+              }}
+              onScrollComplete={stopScrolling}
+              onPlay={startScrolling}
+              onPause={stopScrolling}
+              onReset={resetScrolling}
+            />
           </View>
 
           <View style={styles.cameraSection}>
-            {renderCamera()}
+            <ReadingCamera
+              permission={permission}
+              audioPermission={audioPermission}
+              requestPermission={requestPermission}
+              requestAudioPermission={requestAudioPermission}
+            />
           </View>
         </>
       )}
@@ -639,13 +676,15 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   previewButtons: {
-    position: 'absolute',
-    bottom: 40, 
     flexDirection: 'row',
     width: '100%',
     justifyContent: 'center',
     gap: 20,
     paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: 20,
+    backgroundColor: 'transparent',
+    zIndex: 1,
   },
   readingSection: {
     flex: 1,
@@ -697,6 +736,69 @@ const styles = StyleSheet.create({
   controlButtonText: {
     color: 'white',
     fontSize: 18,
+    fontWeight: '600',
+  },
+
+  scrollControlsContainer: {
+    position: 'absolute',
+    flexDirection: 'row',
+    gap: 10,
+    bottom: 20,
+    alignSelf: 'center',
+    zIndex: 10,
+  },
+
+  controlButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(10, 126, 164, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+
+  resetButton: {
+    backgroundColor: 'rgba(220, 53, 69, 0.8)',
+  },
+
+  controlButtonText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+
+  retakeButton: {
+    backgroundColor: 'rgba(220, 53, 69, 0.8)', // Red tint
+    flex: 1,
+    maxWidth: 150,
+  },
+
+  saveButton: {
+    backgroundColor: 'rgba(40, 167, 69, 0.8)', // Green tint
+    flex: 1,
+    maxWidth: 150,
+  },
+
+  button: {
+    padding: 15,
+    borderRadius: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+
+  buttonText: {
+    color: 'white',
+    fontSize: 16,
     fontWeight: '600',
   },
 })
