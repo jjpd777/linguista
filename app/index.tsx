@@ -240,7 +240,7 @@ export default function ReadingTestScreen() {
     }
 
     return (
-      <View style={styles.container}>
+      <View style={styles.cameraContainer}>
         <CameraView 
           ref={cameraRef}
           style={styles.camera} 
@@ -254,28 +254,28 @@ export default function ReadingTestScreen() {
           >
             <ThemedText style={styles.flipButtonText}>Flip</ThemedText>
           </TouchableOpacity>
-          <View style={styles.buttonContainer}>
-            {!isRecording ? (
-              <TouchableOpacity 
-                style={styles.recordButton}
-                onPress={startRecording}
-              >
-                <ThemedText style={styles.recordButtonText}>
-                  Start Recording
-                </ThemedText>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity 
-                style={[styles.recordButton, styles.recordingButton]}
-                onPress={stopRecording}
-              >
-                <ThemedText style={styles.recordButtonText}>
-                  Stop Recording
-                </ThemedText>
-              </TouchableOpacity>
-            )}
-          </View>
         </CameraView>
+        <View style={styles.recordButtonContainer}>
+          {!isRecording ? (
+            <TouchableOpacity 
+              style={styles.recordButton}
+              onPress={startRecording}
+            >
+              <ThemedText style={styles.recordButtonText}>
+                Start Recording
+              </ThemedText>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity 
+              style={[styles.recordButton, styles.recordingButton]}
+              onPress={stopRecording}
+            >
+              <ThemedText style={styles.recordButtonText}>
+                Stop Recording
+              </ThemedText>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     );
   };
@@ -576,26 +576,38 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     width: '100%',
   },
-  camera: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    width: '100%',
-    height: '100%',
-    zIndex: 2,
-  },
-  buttonContainer: {
-    position: 'absolute',
-    bottom: 40,
-    flexDirection: 'row',
-    width: '100%',
+  cameraContainer: {
+    flex: 1,
     justifyContent: 'center',
-    gap: 20,
+    alignItems: 'center',
+    backgroundColor: '#000',
+  },
+  camera: {
+    width: '100%',
+    aspectRatio: 16 / 9, // This maintains a consistent video aspect ratio
+    alignSelf: 'center',
+  },
+  recordButtonContainer: {
+    position: 'absolute',
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    bottom: '10%', // Adjust this value to position the button where you want it
+  },
+  recordButton: {
+    backgroundColor: 'rgba(255, 0, 0, 0.6)',
+    padding: 20,
+    borderRadius: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 160,
+  },
+  recordingButton: {
+    backgroundColor: 'rgba(255, 0, 0, 0.8)',
   },
   flipButton: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 60 : 40,
+    top: 20,
     right: 20,
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
     padding: 12,
@@ -620,28 +632,11 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     backgroundColor: '#2c5282', // Different color to distinguish it
   },
-  recordButton: {
-    backgroundColor: 'rgba(255, 0, 0, 0.6)',
-    padding: 20,
-    borderRadius: 25,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 160,
-  },
-  recordingButton: {
-    backgroundColor: 'rgba(255, 0, 0, 0.8)',
-  },
-  recordButtonText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  saveButton: {
-    backgroundColor: '#28a745', // Green color for save button
-  },
   video: {
     flex: 1,
     width: '100%',
+    aspectRatio: 16 / 9,
+    alignSelf: 'center',
   },
   previewButtons: {
     position: 'absolute',
@@ -667,10 +662,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     paddingVertical: 10,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255, 255, 255, 0.1)',
   },
 
@@ -679,6 +673,7 @@ const styles = StyleSheet.create({
     gap: 10,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 15,
   },
 
   controlButton: {
@@ -704,4 +699,4 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
   },
-});
+})
